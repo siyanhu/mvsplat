@@ -161,7 +161,8 @@ cython_debug/
 .vscode
 
 /datasets
-/datasets_*
+datasets_*
+datasets_pairs
 /dataset_cache
 /datasets_raw
 
