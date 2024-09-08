@@ -241,24 +241,6 @@ def build_camera_info(intr, extr):
 
 
 def get_original_params(original_image_path, intrinsicss, extrinsicss, points3D, padding_factor=1):
-    # (filedir, filename, fileext) = fio.get_filename_components(mvsp_image_path)
-    # grand_parent_folder = fio.getGrandParentDir(mvsp_image_path)
-
-    # original_image_path = fio.createPath(fio.sep, [grand_parent_folder, 'images', 'seq-01'], '.'.join([filename, fileext]))
-    # if (fio.file_exist(original_image_path)) == False:
-    #     original_image_path = fio.createPath(fio.sep, [grand_parent_folder, 'images', 'seq-02'], '.'.join([filename, fileext]))
-    #     if (fio.file_exist(original_image_path)) == False:
-    #         print("[ERROR] File doesn't exist", original_image_path)
-    #         return
-    
-    # original_parent_dir = fio.getParentDir(original_image_path)
-    # (filedir, filename, fileext) = fio.get_filename_components(original_parent_dir)
-    # original_seq_name = filename
-    # (filedir, filename, fileext) = fio.get_filename_components(original_image_path)
-    # original_image_name = filename
-    # original_image_ext = fileext
-    # image_name = fio.sep.join([original_seq_name, original_image_name]) + '.' + original_image_ext
-
     (filedir, file_name, fileext) = fio.get_filename_components(original_image_path)
     (nextfiledir, next_seq_name, next_fileext) = fio.get_filename_components(filedir)
     image_name = fio.sep.join([next_seq_name, file_name]) + '.' + fileext
@@ -434,7 +416,7 @@ if __name__ == '__main__':
     
     for scene_dir_pth in scene_dirs:
         (scenedir, scenename, sceneext) = fio.get_filename_components(scene_dir_pth)
-        
+
         refresh_folder = fio.createPath(fio.sep, ['datasets_crossvalid', scenename, this_time, 'test'])
         if fio.file_exist(refresh_folder):
             fio.delete_folder(refresh_folder)
@@ -515,6 +497,7 @@ if __name__ == '__main__':
             num_bytes = get_size(image_dir) // 7
 
             example = load_metadata(intrinsics, world2cams)
+            
             example["images"] = [
                 images_dict[timestamp.item()] for timestamp in example["timestamps"]
             ]

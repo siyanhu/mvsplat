@@ -189,7 +189,7 @@ def ensure_dir(directory):
         if isinstance(directory, list):
             directory = createPath(sep, directory)
         if not os.path.exists(directory):
-            os.makedirs(directory)
+            os.makedirs(directory, exist_ok=True)
     except:
         print("FATAL ERROR: ENSURE_DIR in file_io.py!")
 
