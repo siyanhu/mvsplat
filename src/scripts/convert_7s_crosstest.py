@@ -434,6 +434,12 @@ if __name__ == '__main__':
     
     for scene_dir_pth in scene_dirs:
         (scenedir, scenename, sceneext) = fio.get_filename_components(scene_dir_pth)
+        
+        refresh_folder = fio.createPath(fio.sep, ['datasets_crossvalid', scenename, this_time, 'test'])
+        if fio.file_exist(refresh_folder):
+            fio.delete_folder(refresh_folder)
+        fio.ensure_dir(refresh_folder)
+
         chunk_size = 0
         chunk_index = 0
         chunk: list[Example] = []
@@ -449,10 +455,6 @@ if __name__ == '__main__':
                  f"Saving chunk {chunk_key} ({chunk_size / 1e6:.2f} MB)."
             )
             dir = fio.createPath(fio.sep, ['datasets_crossvalid', scenename, this_time, 'test'])
-            if fio.file_exist(dir):
-                fio.delete_folder(dir)
-
-            fio.ensure_dir(dir)
             torch.save(chunk, dir + fio.sep + "{}.torch".format(chunk_key))
             chunk_size = 0
             chunk_index += 1
