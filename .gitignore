@@ -162,6 +162,7 @@ cython_debug/
 
 /datasets
 /dataset_cache
+/datasets_raw
 
 # Outputs
 /outputs
