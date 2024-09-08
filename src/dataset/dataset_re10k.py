@@ -142,7 +142,6 @@ class DatasetRE10k(IterableDataset):
                 if (get_fov(intrinsics).rad2deg() > self.cfg.max_fov).any():
                     continue
 
-                # Load the images.
                 context_images = [
                     example["images"][index.item()] for index in context_indices
                 ]

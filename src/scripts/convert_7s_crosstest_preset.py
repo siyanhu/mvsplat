@@ -26,17 +26,13 @@ class Metadata(TypedDict):
     cameras: Float[Tensor, "camera entry"]
 
 
+class Example(Metadata):
+    key: str
+    images: list[UInt8[Tensor, "..."]]
+
+
 def cyan(text: str) -> str:
     return f"{Fore.CYAN}{text}{Fore.RESET}"
-
-
-def get_current_timestamp(format_str=''):
-    if format_str == '':
-        # Return timestamp as integer in milliseconds
-        return int(time.time() * 1000)
-    else:
-        # Return formatted timestamp string
-        return datetime.now().strftime(format_str)
 
 
 def quaternion_to_rotation_matrix(qw, qx, qy, qz):
@@ -250,8 +246,7 @@ def get_params(original_image_path, intrinsicss, extrinsicss, points3D={}, paddi
 
     near = 1.0
     far = 100.0
-    
-    try:
+    if len(points3D) > 1:
         visible_points = [points3D[point3D_id]['xyz'] for point3D_id in points3D if extrinsicss[image_name]['image_id'] in points3D[point3D_id]['image_ids']]
         visible_points_array = np.array(visible_points)
         points_cam = np.dot(R, visible_points_array.T).T + t
@@ -260,8 +255,6 @@ def get_params(original_image_path, intrinsicss, extrinsicss, points3D={}, paddi
         max_depth = np.max(depths)
         near = max(min_depth / padding_factor, 0.1)
         far = max_depth * padding_factor
-    except:
-        pass
 
     intri, extri = build_camera_info(single_intrinsic['intrinsic'], single_extrisic['extrinsic'])
     return original_image_path, image_name, intri, extri, near, far
@@ -301,8 +294,6 @@ def load_metadata(intrinsics, world2cams) -> Metadata:
         saved_cy = 0.5
         camera = [saved_fx, saved_fy, saved_cx, saved_cy, 0.0, 0.0]
 
-        # print(vid)
-
         w2c = world2cams[vid]
         camera.extend(w2c[:3].flatten().tolist())
         cameras.append(np.array(camera))
@@ -320,6 +311,22 @@ def load_metadata(intrinsics, world2cams) -> Metadata:
 def get_size(path) -> int:
     """Get file or folder size in bytes."""
     return int(subprocess.check_output(["du", "-b", path]).split()[0].decode("utf-8"))
+
+
+def calculate_file_sizes(file_paths):
+    total_size = 0
+    errors = []
+
+    for path in file_paths:
+        try:
+            size = int(subprocess.check_output(["du", "-b", path]).split()[0].decode("utf-8"))
+            total_size += size
+        except FileNotFoundError:
+            errors.append(f"{path}: File not found")
+        except OSError as e:
+            errors.append(f"{path}: Error: {str(e)}")
+
+    return total_size, errors
 
 
 def parse_pairs_file(filename, data_dir):
@@ -353,14 +360,31 @@ def process_scene(data_dir, pair_path):
     return path_dict, relation_dict
 
 
+def get_label(image_path):
+    # Split the path by '/' and take the last two elements
+    parts = image_path.split('/')
+    return '/'.join(parts[-2:])
+
+
+def rank_and_pair(numbers):
+    # Sort the list in ascending order
+    sorted_numbers = sorted(numbers)
+    # Generate pairs
+    pairs = [[sorted_numbers[i], sorted_numbers[i+1]] for i in range(len(sorted_numbers)-1)]
+    return pairs
+
+
 if __name__ == '__main__':
     data_tag = '7s'
     scene_tag = 'scene_stairs'
     this_time = fio.get_current_timestamp("%Y_%m_%d")
-    testing_count = 0
 
     scene_data_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_raw', data_tag, scene_tag])
     scene_pair_path = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_pairs', data_tag, scene_tag], 'pairs-query-netvlad10.txt')
+    save_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets__crossvalid_preset', data_tag, scene_tag, 'test'])
+    if fio.file_exist(save_dir):
+        fio.delete_folder(save_dir)
+    fio.ensure_dir(save_dir)
 
     if (fio.file_exist(scene_data_dir) == False) or (fio.file_exist(scene_pair_path) == False):
         print(cyan("[ERROR] No data detected: {}, {}". format(data_tag, scene_tag)))
@@ -384,86 +408,120 @@ if __name__ == '__main__':
     fio.ensure_dir(output_dir)
 
     paths, relation = process_scene(scene_data_dir, scene_pair_path)
+    target_labels = list(relation.keys())
+    vid_dict, intrinsics, world2cams, cam2worlds, near_fars = {}, {}, {}, {}, {}
+    image_dict = {}
+    base_vids_dict = {}
+    target_vids_dict = {}
 
-    for target_img_label in relation.keys():
+    vid = -1
+    for imgpth_label, img_path in paths.items():
+        vid += 1
+        if (imgpth_label in target_labels):
+            update_img_pth, vid_name, intrins, extrins, near, far = get_params(img_path, test_intri_dict, test_extri_dict)
+            img_bin = load_raw(img_path)
+            image_dict[vid] = img_bin
 
-        test_img_path = paths[target_img_label]
-        update_img_pth, vid_name, intrins, extrins, near, far = get_params(test_img_path, test_intri_dict, test_extri_dict)
-        
-        img_bin_test = load_raw(test_img_path)
-        num_bytes_test = get_size(test_img_path) // 7
+            vid_dict[vid] = vid_name
+            intrinsics[vid] = intrins
+            world2cams[vid] = extrins
+            cam2worlds[vid] = np.linalg.inv(extrins)
+            near_fars[vid] = [near, far]
+            target_vids_dict[imgpth_label] = vid
 
-        example_test = load_metadata({"0":intrins}, {"0":extrins})
-        example_test["images"] = [
-            img_bin_test
-        ]
+        else:
+            update_img_pth, vid_name, intrins, extrins, near, far = get_params(img_path, train_intri_dict, train_extri_dict, train_pnt3d_dict)
+            img_bin = load_raw(img_path)
+            image_dict[vid] = img_bin
 
-        example_test["key"] = target_img_label
-        save_path_torch_test = fio.createPath(fio.sep, [output_dir, this_time, target_img_label.replace('.png', ''), 'test'], '000000.torch')
-        (sptt_dir, sptt_name, sptt_ext) = fio.get_filename_components(save_path_torch_test)
-        fio.ensure_dir(sptt_dir)
-        print(save_path_torch_test)
-        torch.save([example_test], save_path_torch_test)
+            vid_dict[vid] = vid_name
+            intrinsics[vid] = intrins
+            world2cams[vid] = extrins
+            cam2worlds[vid] = np.linalg.inv(extrins)
+            near_fars[vid] = [near, far]
+            base_vids_dict[imgpth_label] = vid
 
-        save_path_index_test = fio.createPath(fio.sep, [output_dir, this_time, target_img_label.replace('.png', ''), 'test'], 'index.json')
-        save_json_test = {}
-        save_json_test[target_img_label] = '000000.torch'
-        with open(save_path_index_test, 'w') as file0:
-            json.dump(save_json_test, file0, indent=4)
+    chunk_size = 0
+    chunk_index = 0
+    chunk: list[Example] = []
 
-        vid_dict_train, intrinsics_train, world2cams_train, cam2worlds_train, near_fars_train = {}, {}, {}, {}, {}
-        images_dict_train = {}
-        training_img_labels = relation[target_img_label]
+    def save_chunk():
+        global chunk_size
+        global chunk_index
+        global chunk
 
-        output_dir_sub0 = fio.createPath(fio.sep, [output_dir, this_time, target_img_label.replace('.png', ''), 'train', 'images'])
-        fio.ensure_dir(output_dir_sub0)
+        chunk_key = f"{chunk_index:0>6}"
+        print(
+            # f"Saving chunk {chunk_key} of {len(keys)} ({chunk_size / 1e6:.2f} MB)."
+                f"Saving chunk {chunk_key} ({chunk_size / 1e6:.2f} MB)."
+        )
+        dir = save_dir
+        torch.save(chunk, dir + fio.sep + "{}.torch".format(chunk_key))
+        chunk_size = 0
+        chunk_index += 1
+        chunk = []
+    
+    asset_dict = {}
+    for key in target_labels:
+        target_vid = target_vids_dict[key]
+        base_labels = relation[key]
 
-        for ti_vid in range(len(training_img_labels)):
-            ti_label = training_img_labels[ti_vid]
-            ti_image_path = paths[ti_label]
+        base_vid_list = [base_vids_dict.get(blabel) for blabel in base_labels]
+        asset_dict[key] = {
+            "context": base_vid_list,
+            "target": [target_vid]
+        }
+        # base_vid_pairs = rank_and_pair(base_vid_list)
+        # print(base_vid_pairs)
+        example_vids = base_vid_list.copy()
+        example_vids.append(target_vid)
 
-            if fio.file_exist(ti_image_path) == False:
-                continue
-            
-            move_to_path = fio.createPath(fio.sep, [output_dir_sub0], ti_label)
-            (move_to_pathdir, move_to_pathname, move_to_pathext) = fio.get_filename_components(move_to_path)
-            fio.ensure_dir(move_to_pathdir)
-            fio.copy_file(ti_image_path, move_to_path)
+        example_intrin = {bkey: intrinsics[bkey] for bkey in example_vids if bkey in intrinsics}
+        example_world2cams = {bkey: world2cams[bkey] for bkey in example_vids if bkey in world2cams}
+        example_image_dict = {bkey: image_dict[bkey] for bkey in example_vids if bkey in image_dict}
 
-            update_img_pth, vid_name, intrins, extrins, near, far = get_params(ti_image_path, train_intri_dict, train_extri_dict, train_pnt3d_dict)
-            
-            img_bin = load_raw(ti_image_path)
-            images_dict_train[ti_vid] = img_bin
-
-            vid_dict_train[ti_vid] = vid_name
-            intrinsics_train[ti_vid] = intrins
-            world2cams_train[ti_vid] = extrins
-            cam2worlds_train[ti_vid] = np.linalg.inv(extrins)
-            near_fars_train[ti_vid] = [near, far]
-        
-        image_dir = fio.getParentDir(output_dir_sub0)
-        num_bytes = get_size(image_dir) // 7
-
-        example = load_metadata(intrinsics_train, world2cams_train)
+        example = load_metadata(example_intrin, example_world2cams)
+        example['key'] = key
         example["images"] = [
-            images_dict_train[timestamp.item()] for timestamp in example["timestamps"]
+                example_image_dict[timestamp.item()] for timestamp in example["timestamps"]
         ]
+        assert len(example_image_dict) == len(example["timestamps"])
 
-        assert len(images_dict_train) == len(example["timestamps"])
-        example["key"] = target_img_label
+        target_path = paths[key]
+        base_paths = [paths.get(bkey) for bkey in base_labels]
+        example_paths =  base_paths.copy()
+        example_paths.append(target_path)
 
-        save_path_torch = fio.createPath(fio.sep, [output_dir, this_time, target_img_label.replace('.png', ''), 'train'], '000000.torch')
-        print(save_path_torch)
-        torch.save([example], save_path_torch)
-        fio.delete_folder(output_dir_sub0)
+        num_bytes = 0
+        for imgpth in example_paths:
+            num_bytes += get_size(imgpth)
+        # num_bytes, errors = calculate_file_sizes(example_paths)
+
+        print(f"    Added {key} to chunk ({num_bytes / 1e6:.2f} MB).")
+        chunk.append(example)
+        chunk_size += num_bytes
+
+        if chunk_size >= TARGET_BYTES_PER_CHUNK:
+            save_chunk()
+
+    if chunk_size > 0:
+        save_chunk()
+
+    index = {}
+    save_path_index = fio.createPath(fio.sep, [save_dir], 'index.json')
+    chunk_paths = fio.traverse_dir(save_dir, full_path=True, towards_sub=False)
+    chunk_paths = fio.filter_ext(chunk_paths, filter_out_target=False, ext_set=['torch'])
+    for chnk_pth in chunk_paths:
+        (chnkfile, chnkname, chnkext) = fio.get_filename_components(chnk_pth)
+        chunk = torch.load(chnk_pth)
+        for example in chunk:
+            index[example["key"]] = chnkname + '.' + chnkext
+
+    with open(save_path_index, 'w') as f_index:
+        json.dump(index, f_index)
+
+    save_path_asset = fio.createPath(fio.sep, [save_dir], 'evaluation.json')
+    with open(save_path_asset, 'w') as file:
+        json.dump(asset_dict, file, indent=4)
+
         
-        save_path_index = fio.createPath(fio.sep, [output_dir, this_time, target_img_label.replace('.png', ''), 'train'], 'index.json')
-        save_json = {}
-        save_json[target_img_label] = '000000.torch'
-        with open(save_path_index, 'w') as file:
-            json.dump(save_json, file, indent=4)
-
-        testing_count += 1
-
-        if testing_count > 10:
-            break

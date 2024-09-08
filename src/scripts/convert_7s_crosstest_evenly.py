@@ -417,7 +417,7 @@ if __name__ == '__main__':
     for scene_dir_pth in scene_dirs:
         (scenedir, scenename, sceneext) = fio.get_filename_components(scene_dir_pth)
 
-        refresh_folder = fio.createPath(fio.sep, ['datasets_crossvalid', scenename, this_time, 'test'])
+        refresh_folder = fio.createPath(fio.sep, ['datasets_crossvalid_evenly', scenename, this_time, 'test'])
         if fio.file_exist(refresh_folder):
             fio.delete_folder(refresh_folder)
         fio.ensure_dir(refresh_folder)
@@ -436,7 +436,7 @@ if __name__ == '__main__':
                 # f"Saving chunk {chunk_key} of {len(keys)} ({chunk_size / 1e6:.2f} MB)."
                  f"Saving chunk {chunk_key} ({chunk_size / 1e6:.2f} MB)."
             )
-            dir = fio.createPath(fio.sep, ['datasets_crossvalid', scenename, this_time, 'test'])
+            dir = fio.createPath(fio.sep, ['datasets_crossvalid_evenly', scenename, this_time, 'test'])
             torch.save(chunk, dir + fio.sep + "{}.torch".format(chunk_key))
             chunk_size = 0
             chunk_index += 1
@@ -517,7 +517,7 @@ if __name__ == '__main__':
 
         print("Generate key:torch index...")
         index = {}
-        save_dir = fio.createPath(fio.sep, ['datasets_crossvalid', scenename, this_time, 'test'])
+        save_dir = fio.createPath(fio.sep, ['datasets_crossvalid_evenly', scenename, this_time, 'test'])
         fio.ensure_dir(save_dir)
         save_path = fio.createPath(fio.sep, [save_dir], 'index.json')
 
@@ -533,7 +533,7 @@ if __name__ == '__main__':
             with open(save_path, 'w') as f:
                 json.dump(index, f)
 
-        save_dir1 = fio.createPath(fio.sep, ['datasets_crossvalid', scenename, this_time, 'test'])
+        save_dir1 = fio.createPath(fio.sep, ['datasets_crossvalid_evenly', scenename, this_time, 'test'])
         fio.ensure_dir(save_dir1)
         save_path1 = fio.createPath(fio.sep, [save_dir1], '_'.join(["evaluation_index", '7s', scenename]) + '.json')
 
