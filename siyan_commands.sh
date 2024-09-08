@@ -19,6 +19,5 @@
 
 python -m src.main +experiment=7s_scene_stairs_train \
 data_loader.train.batch_size=14 \
-output_dir='/home/siyanhu/Gits/mvsplat/outputs_train' \
-mode=train
-# datasets/7s/scene_stairs/2024_09_09/seq-01/frame-000266.color
+mode=train \
+# output_dir='/home/siyanhu/Gits/mvsplat/outputs_train'
