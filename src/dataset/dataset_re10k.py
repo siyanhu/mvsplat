@@ -141,7 +141,14 @@ class DatasetRE10k(IterableDataset):
                 # Skip the example if the field of view is too wide.
                 if (get_fov(intrinsics).rad2deg() > self.cfg.max_fov).any():
                     continue
-
+                
+                # context_images = []
+                # for index in context_indices:
+                #     test_item = index.item()
+                #     if test_item > len(example["images"]) - 1:
+                #         test_item = len(example["images"]) - 1
+                #     img = example["images"][test_item]
+                #     context_images.append(img)
                 context_images = [
                     example["images"][index.item()] for index in context_indices
                 ]
@@ -149,6 +156,13 @@ class DatasetRE10k(IterableDataset):
                 target_images = [
                     example["images"][index.item()] for index in target_indices
                 ]
+                # target_images = []
+                # for index in target_indices:
+                #     test_item = index.item()
+                #     if test_item > len(example["images"]) - 1:
+                #         test_item = len(example["images"]) - 1
+                #     img = example["images"][test_item]
+                #     target_images.append(img)
                 target_images = self.convert_images(target_images)
 
                 # Skip the example if the images don't have the right shape.

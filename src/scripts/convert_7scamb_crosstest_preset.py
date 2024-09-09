@@ -375,6 +375,8 @@ def rank_and_pair(numbers):
 
 
 if __name__ == '__main__':
+    # data_tag = '7s'
+    # scene_tag = 'scene_stairs'
     data_tag = 'camb'
     scene_tag = 'scene_KingsCollege'
     this_time = fio.get_current_timestamp("%Y_%m_%d")
@@ -407,40 +409,6 @@ if __name__ == '__main__':
     output_dir = fio.createPath(fio.sep, [fio.getParentDir(), "datasets", data_tag, scene_tag])
     fio.ensure_dir(output_dir)
 
-    paths, relation = process_scene(scene_data_dir, scene_pair_path)
-    target_labels = list(relation.keys())
-    vid_dict, intrinsics, world2cams, cam2worlds, near_fars = {}, {}, {}, {}, {}
-    image_dict = {}
-    base_vids_dict = {}
-    target_vids_dict = {}
-
-    vid = -1
-    for imgpth_label, img_path in paths.items():
-        vid += 1
-        if (imgpth_label in target_labels):
-            update_img_pth, vid_name, intrins, extrins, near, far = get_params(img_path, test_intri_dict, test_extri_dict)
-            img_bin = load_raw(img_path)
-            image_dict[vid] = img_bin
-
-            vid_dict[vid] = vid_name
-            intrinsics[vid] = intrins
-            world2cams[vid] = extrins
-            cam2worlds[vid] = np.linalg.inv(extrins)
-            near_fars[vid] = [near, far]
-            target_vids_dict[imgpth_label] = vid
-
-        else:
-            update_img_pth, vid_name, intrins, extrins, near, far = get_params(img_path, train_intri_dict, train_extri_dict, train_pnt3d_dict)
-            img_bin = load_raw(img_path)
-            image_dict[vid] = img_bin
-
-            vid_dict[vid] = vid_name
-            intrinsics[vid] = intrins
-            world2cams[vid] = extrins
-            cam2worlds[vid] = np.linalg.inv(extrins)
-            near_fars[vid] = [near, far]
-            base_vids_dict[imgpth_label] = vid
-
     chunk_size = 0
     chunk_index = 0
     chunk: list[Example] = []
@@ -460,39 +428,57 @@ if __name__ == '__main__':
         chunk_size = 0
         chunk_index += 1
         chunk = []
-    
+
+    paths, relation = process_scene(scene_data_dir, scene_pair_path)
     asset_dict = {}
-    for key in target_labels:
-        target_vid = target_vids_dict[key]
-        base_labels = relation[key]
+    
+    for key, base_labels in relation.items():
+        
+        vid_dict, intrinsics, world2cams, cam2worlds, near_fars = {}, {}, {}, {}, {}
+        images_dict = {}
+        base_vids = []
+        num_bytes = 0
 
-        base_vid_list = [base_vids_dict.get(blabel) for blabel in base_labels]
+        vid = 0
+        asset_target = vid
+        key_img_path = paths[key]
+        update_img_pth, vid_name, intrins, extrins, near, far = get_params(key_img_path, test_intri_dict, test_extri_dict)
+        
+        images_dict[vid] = load_raw(key_img_path)
+        vid_dict[vid] = vid_name
+        intrinsics[vid] = intrins
+        world2cams[vid] = extrins
+        cam2worlds[vid] = np.linalg.inv(extrins)
+        near_fars[vid] = [near, far]
+        num_bytes += get_size(key_img_path)
+        
+        for blabel in base_labels:
+            vid += 1
+            base_img_path = paths[blabel]
+            update_img_pth, vid_name, intrins, extrins, near, far = get_params(base_img_path, train_intri_dict, train_extri_dict, train_pnt3d_dict)
+        
+            base_vids.append(vid)
+            images_dict[vid] = load_raw(base_img_path)
+            vid_dict[vid] = vid_name
+            intrinsics[vid] = intrins
+            world2cams[vid] = extrins
+            cam2worlds[vid] = np.linalg.inv(extrins)
+            near_fars[vid] = [near, far]
+            num_bytes += get_size(base_img_path)
+
         asset_dict[key] = {
-            "context": base_vid_list,
-            "target": [target_vid]
+            "context": base_vids,
+            "target": [asset_target]
         }
-        # base_vid_pairs = rank_and_pair(base_vid_list)
-        # print(base_vid_pairs)
-        example_vids = base_vid_list.copy()
-        example_vids.append(target_vid)
 
-        example_intrin = {bkey: intrinsics[bkey] for bkey in example_vids if bkey in intrinsics}
-        example_world2cams = {bkey: world2cams[bkey] for bkey in example_vids if bkey in world2cams}
-        example_image_dict = {bkey: image_dict[bkey] for bkey in example_vids if bkey in image_dict}
-
-        example = load_metadata(example_intrin, example_world2cams)
-        example['key'] = key
+        example = load_metadata(intrinsics, world2cams)
         example["images"] = [
-                example_image_dict[timestamp.item()] for timestamp in example["timestamps"]
+            images_dict[timestamp.item()] for timestamp in example["timestamps"]
         ]
-        assert len(example_image_dict) == len(example["timestamps"])
 
-        target_path = paths[key]
-        base_paths = [paths.get(bkey) for bkey in base_labels]
-        example_paths =  base_paths.copy()
-        example_paths.append(target_path)
-        num_bytes, errors = calculate_file_sizes(example_paths)
-
+        assert len(images_dict) == len(example["timestamps"])
+        example["key"] = key
+        
         print(f"    Added {key} to chunk ({num_bytes / 1e6:.2f} MB).")
         chunk.append(example)
         chunk_size += num_bytes
@@ -502,6 +488,10 @@ if __name__ == '__main__':
 
     if chunk_size > 0:
         save_chunk()
+
+    save_path_asset = fio.createPath(fio.sep, [save_dir], 'evaluation.json')
+    with open(save_path_asset, 'w') as file:
+        json.dump(asset_dict, file)
 
     index = {}
     save_path_index = fio.createPath(fio.sep, [save_dir], 'index.json')
@@ -515,9 +505,3 @@ if __name__ == '__main__':
 
     with open(save_path_index, 'w') as f_index:
         json.dump(index, f_index)
-
-    save_path_asset = fio.createPath(fio.sep, [save_dir], 'evaluation.json')
-    with open(save_path_asset, 'w') as file:
-        json.dump(asset_dict, file, indent=4)
-
-        

@@ -36,7 +36,7 @@ loss:
 
 dataset: 
   image_shape: [256, 256]
-  roots: [datasets_crossvalid/scene_fire/2024_09_08]
+  roots: [datasets_crossvalid_evenly/scene_fire/2024_09_09]
   near: 1.
   far: 100.
   baseline_scale_bounds: false
