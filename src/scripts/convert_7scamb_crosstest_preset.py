@@ -444,15 +444,15 @@ def save_command_to_file(command, filename):
 
 
 if __name__ == '__main__':
-    # data_tag = '7s'
+    data_tag = '7s'
     # scene_tag = 'scene_stairs'
-    # scene_tag = 'scene_fire'
+    scene_tag = 'scene_fire'
 
-    data_tag = 'camb'
-    scene_tag = 'scene_KingsCollege'
+    # data_tag = 'camb'
+    # scene_tag = 'scene_KingsCollege'
     
     this_time = fio.get_current_timestamp("%Y_%m_%d")
-    sample_num_required = 5
+    sample_num_required = 10
 
     scene_data_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_raw', data_tag, scene_tag])
     scene_pair_path = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_pairs', data_tag, scene_tag], 'pairs-query-netvlad10.txt')

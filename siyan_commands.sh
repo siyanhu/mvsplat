@@ -93,6 +93,14 @@
 
 python src/scripts/convert_7scamb_crosstest_preset.py
 
+bash datasets/7s/n2/scene_stairs/test/command.sh 
+bash datasets/7s/n2/scene_fire/test/command.sh 
+bash datasets/camb/n2/scene_KingsCollege/test/command.sh 
+
 bash datasets/7s/n5/scene_stairs/test/command.sh 
 bash datasets/7s/n5/scene_fire/test/command.sh 
 bash datasets/camb/n5/scene_KingsCollege/test/command.sh 
+
+bash datasets/7s/n10/scene_stairs/test/command.sh 
+bash datasets/7s/n10/scene_fire/test/command.sh 
+bash datasets/camb/n10/scene_KingsCollege/test/command.sh 

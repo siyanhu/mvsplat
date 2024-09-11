@@ -141,7 +141,7 @@ def generate_point_cloud_figure(cfg_dict):
         # Create a dataset that always returns the desired scene.
         view_sampler_cfg = ViewSamplerArbitraryCfg(
             "arbitrary",
-            5,
+            10,
             2,
             context_views=list(context_indices),
             target_views=[0, 0],  # use [40, 80] for teaser
