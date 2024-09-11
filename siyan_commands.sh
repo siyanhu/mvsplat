@@ -91,5 +91,8 @@
 # dataset.view_sampler.num_context_views=5 \
 # test.compute_scores=true
 
-python src/scripts/convert_7scamb_crosstest_preset.py \
+python src/scripts/convert_7scamb_crosstest_preset.py
+
+bash datasets/7s/n5/scene_stairs/test/command.sh 
 bash datasets/7s/n5/scene_fire/test/command.sh 
+bash datasets/camb/n5/scene_KingsCollege/test/command.sh 
