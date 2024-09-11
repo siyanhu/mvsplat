@@ -91,6 +91,8 @@
 # dataset.view_sampler.num_context_views=5 \
 # test.compute_scores=true
 
+rm -rf outputs/test 
+
 python src/scripts/convert_7scamb_hs5.py
 
 bash datasets/7s/n2/scene_stairs/test/command.sh 
@@ -104,3 +106,7 @@ bash datasets/camb/n5/scene_KingsCollege/test/command.sh
 bash datasets/7s/n10/scene_stairs/test/command.sh 
 bash datasets/7s/n10/scene_fire/test/command.sh 
 bash datasets/camb/n10/scene_KingsCollege/test/command.sh 
+
+rm -rf outputs/test && \
+python src/scripts/convert_7scamb_hs5.py && \
+bash datasets/7s/n5/scene_fire/test/command.sh 

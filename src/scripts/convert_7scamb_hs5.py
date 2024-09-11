@@ -2,7 +2,8 @@ import sys
 sys.path.append("/home/siyanhu/Gits/mvsplat/src")
 import root_file_io as fio
 
-import random
+from PIL import Image
+import io
 import copy
 import numpy as np
 import subprocess
@@ -87,7 +88,7 @@ def colmap_intrinsics_to_camera_matrix(camera_model, params):
         raise ValueError(f"Unsupported camera model: {camera_model}")
     
 
-def colmap_extrinsics_to_transformation_matrix(qw, qx, qy, qz, tx, ty, tz, scale_factor):
+def colmap_extrinsics_to_transformation_matrix(qw, qx, qy, qz, tx, ty, tz, scale_factor=1):
     """
     Convert COLMAP extrinsics format to a 4x4 transformation matrix.
     
@@ -118,10 +119,6 @@ def get_colmap_extrinsic(extri_file):
     """
     Taken from https://github.com/colmap/colmap/blob/dev/scripts/python/read_write_model.py
     """
-
-    #     position = np.array([tx, ty, tz])
-    # camera_positions.append(position)
-
     camera_positions = []
     with open(extri_file, "r") as fid:
         while True:
@@ -146,7 +143,6 @@ def get_colmap_extrinsic(extri_file):
     camera_positions_np = np.array(camera_positions)
     distances = np.linalg.norm(camera_positions_np[:, None] - camera_positions_np, axis=2)
     scale_factor = np.median(distances[distances > 0])
-    print(scale_factor)
 
     images = {}
     with open(extri_file, "r") as fid:
@@ -179,7 +175,7 @@ def get_colmap_extrinsic(extri_file):
                         tvec[0],
                         tvec[1],
                         tvec[2],
-                        scale_factor
+                        scale_factor=scale_factor
                         ),
                     "camera_id": camera_id,
                     "image_name": image_name,
@@ -212,31 +208,33 @@ def get_colmap_intrinsic(intri_file):
                 # assert model == "PINHOLE", "While the loader support other types, the rest of the code assumes PINHOLE"
                 width = int(elems[2])
                 height = int(elems[3])
+                params = np.array(tuple(map(float, elems[4:])))
 
                 # new_width = 256
                 # new_height = 256
                 # scale_x = new_width / width
                 # scale_y = new_height / height
 
-                # f, cx, cy = elems
+                # f, cx, cy = params
                 # new_f = f * (scale_x + scale_y) / 2
                 # new_cx = cx * scale_x
                 # new_cy = cy * scale_y
                 # new_params = [new_f, new_cx, new_cy]
                 # params = np.array(tuple(map(float, new_params)))
-        
                 params = np.array(tuple(map(float, elems[4:])))
+
                 init_intri = colmap_intrinsics_to_camera_matrix(model, params)
                 normalised_intri = normalize_intrinsics(init_intri, width, height)
                 cameras[camera_id] = {
                     "camera_id": camera_id,
                     "model": model,
-                    # "width": 256,
-                    # "height": 256,
+                    # "width": new_width,
+                    # "height": new_height,
                     "width": width,
                     "height": height,
                     "params": params,
                     "intrinsic": normalised_intri
+                    # "intrinsic": init_intri
                 }
     return cameras
 
@@ -325,20 +323,6 @@ def get_params(original_image_path, intrinsicss, extrinsicss, points3D={}, paddi
     return original_image_path, image_name, intri, extri, near, far
 
 
-def load_raw(path) -> UInt8[Tensor, " length"]:
-    return torch.tensor(np.memmap(path, dtype="uint8", mode="r"))
-
-
-def load_images(image_paths) -> dict[int, UInt8[Tensor, "..."]]:
-    """Load JPG images as raw bytes (do not decode)."""
-    images_dict = {}
-    for i in range(len(image_paths)):
-        img_pth = image_paths[i]
-        img_bin = load_raw(img_pth)
-        images_dict[i] = img_bin
-    return images_dict
-
-
 def load_metadata(intrinsics, world2cams) -> Metadata:
     timestamps = []
     cameras = []
@@ -373,9 +357,27 @@ def load_metadata(intrinsics, world2cams) -> Metadata:
     }
 
 
+def load_raw(path) -> UInt8[Tensor, " length"]:
+    return torch.tensor(np.memmap(path, dtype="uint8", mode="r"))
+
+
 def get_size(path) -> int:
     """Get file or folder size in bytes."""
     return int(subprocess.check_output(["du", "-b", path]).split()[0].decode("utf-8"))
+
+
+def load_raw_resize(path, save_path) -> UInt8[Tensor, " length"]:
+    image = Image.open(path)
+    resized_image = image.resize((256, 256))
+    byte_arr = io.BytesIO()
+    resized_image.save(byte_arr, format='PNG')
+    resized_image.save(save_path)
+    byte_arr = byte_arr.getvalue()
+    memmap_array = np.frombuffer(byte_arr, dtype=np.uint8)
+    # Load the resized image into a PyTorch tensor
+    tensor = torch.tensor(memmap_array)
+    file_size = len(byte_arr)
+    return file_size, tensor
 
 
 def calculate_file_sizes(file_paths):
@@ -522,9 +524,15 @@ if __name__ == '__main__':
     scene_data_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_raw', data_tag, scene_tag])
     scene_pair_path = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_pairs', data_tag, scene_tag], 'pairs-query-netvlad10.txt')
     save_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets', data_tag, 'n' + str(sample_num_required), scene_tag, 'test'])
+    resize_save_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_resize', data_tag, 'n' + str(sample_num_required), scene_tag])
+
     if fio.file_exist(save_dir):
         fio.delete_folder(save_dir)
     fio.ensure_dir(save_dir)
+
+    if fio.file_exist(resize_save_dir):
+        fio.delete_folder(resize_save_dir)
+    fio.ensure_dir(resize_save_dir)
 
     yaml_input_fth = fio.createPath(fio.sep, [fio.getParentDir(), "config", "experiment"], "re10k.yaml")
     yaml_output_fth = fio.createPath(fio.sep, [fio.getParentDir(), "config", "experiment"], "_".join([data_tag, scene_tag, 'n'+str(sample_num_required)]) + ".yaml")
@@ -588,12 +596,19 @@ if __name__ == '__main__':
         update_img_pth, vid_name, intrins, extrins, near, far = get_params(key_img_path, test_intri_dict, test_extri_dict)
         
         images_dict[vid] = load_raw(key_img_path)
+        # resize_save_path = fio.createPath(fio.sep, [resize_save_dir], 'resize_' + key)
+        # (duedir, duename, dueext) = fio.get_filename_components(resize_save_path)
+        # fio.ensure_dir(duedir)
+        # resized_size_key, tensor_key = load_raw_resize(key_img_path, resize_save_path)
+        # images_dict[vid] = tensor_key
+
         vid_dict[vid] = vid_name
         intrinsics[vid] = intrins
         world2cams[vid] = extrins
         cam2worlds[vid] = np.linalg.inv(extrins)
         near_fars[vid] = [near, far]
         num_bytes += get_size(key_img_path)
+        # num_bytes += resized_size_key
         
         for blabel in base_labels:
             vid += 1
@@ -601,7 +616,14 @@ if __name__ == '__main__':
             update_img_pth, vid_name, intrins, extrins, near, far = get_params(base_img_path, train_intri_dict, train_extri_dict, train_pnt3d_dict)
         
             base_vids.append(vid)
+            
             images_dict[vid] = load_raw(base_img_path)
+            # resize_save_path = fio.createPath(fio.sep, [resize_save_dir], 'resize_' + blabel)
+            # (duedir, duename, dueext) = fio.get_filename_components(resize_save_path)
+            # fio.ensure_dir(duedir)
+            # resized_size_base, tensor_base = load_raw_resize(key_img_path, resize_save_path)
+            # images_dict[vid] = tensor_base
+
             vid_dict[vid] = vid_name
 
             intrinsics[vid] = intrins
@@ -610,6 +632,7 @@ if __name__ == '__main__':
 
             near_fars[vid] = [near, far]
             num_bytes += get_size(base_img_path)
+            # num_bytes += resized_size_base
 
         asset_dict[key] = {
             "context": base_vids,
