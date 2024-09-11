@@ -208,7 +208,7 @@ class ModelWrapper(LightningModule):
         # Save images.
         if self.test_cfg.save_image:
             for index, color in zip(batch["target"]["index"][0], images_prob):
-                save_image(color, path / scene / f"color/{index:0>6}.png")
+                save_image(color, path / f"{scene}")
 
         # save video
         if self.test_cfg.save_video:
@@ -258,13 +258,20 @@ class ModelWrapper(LightningModule):
                     json.dump(metric_scores, f)
                 metric_scores.clear()
 
+            render_time = 0.0
             for tag, times in self.benchmarker.execution_times.items():
                 times = times[int(self.time_skip_steps_dict[tag]) :]
-                saved_scores[tag] = [len(times), np.mean(times)]
+                # saved_scores[tag] = [len(times), np.mean(times)]
                 print(
                     f"{tag}: {len(times)} calls, avg. {np.mean(times)} seconds per call"
                 )
+                if tag == 'decoder':
+                    render_time = np.mean(times)
+                    with (out_dir / f"scores_renderonly_runtime_all.json").open("w") as f:
+                        json.dump(times, f)
                 self.time_skip_steps_dict[tag] = 0
+
+            saved_scores["runtime"] = render_time
 
             with (out_dir / f"scores_all_avg.json").open("w") as f:
                 json.dump(saved_scores, f)

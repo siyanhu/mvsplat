@@ -2,7 +2,7 @@ import sys
 sys.path.append("/home/siyanhu/Gits/mvsplat/src")
 import root_file_io as fio
 
-import time
+import random
 import copy
 import numpy as np
 import subprocess
@@ -15,6 +15,8 @@ from jaxtyping import Float, Int, UInt8
 import torch
 from torch import Tensor
 import json
+
+from ruamel.yaml import YAML
 
 
 TARGET_BYTES_PER_CHUNK = int(1e8)
@@ -230,8 +232,6 @@ def get_params(original_image_path, intrinsicss, extrinsicss, points3D={}, paddi
         print("[ERROR] Cannot find image in extrinsics", original_image_path, image_name)
         return
     
-    near = 0.1
-    far = 1000.0
     single_extrisic = extrinsicss[image_name]
     single_intrinsic = copy.deepcopy(intrinsicss[single_extrisic['camera_id']])
 
@@ -246,15 +246,15 @@ def get_params(original_image_path, intrinsicss, extrinsicss, points3D={}, paddi
 
     near = 1.0
     far = 100.0
-    if len(points3D) > 1:
-        visible_points = [points3D[point3D_id]['xyz'] for point3D_id in points3D if extrinsicss[image_name]['image_id'] in points3D[point3D_id]['image_ids']]
-        visible_points_array = np.array(visible_points)
-        points_cam = np.dot(R, visible_points_array.T).T + t
-        depths = points_cam[:, 2]
-        min_depth = np.min(depths)
-        max_depth = np.max(depths)
-        near = max(min_depth / padding_factor, 0.1)
-        far = max_depth * padding_factor
+    # if len(points3D) > 1:
+    #     visible_points = [points3D[point3D_id]['xyz'] for point3D_id in points3D if extrinsicss[image_name]['image_id'] in points3D[point3D_id]['image_ids']]
+    #     visible_points_array = np.array(visible_points)
+    #     points_cam = np.dot(R, visible_points_array.T).T + t
+    #     depths = points_cam[:, 2]
+    #     min_depth = np.min(depths)
+    #     max_depth = np.max(depths)
+    #     near = max(min_depth / padding_factor, 0.1)
+    #     far = max_depth * padding_factor
 
     intri, extri = build_camera_info(single_intrinsic['intrinsic'], single_extrisic['extrinsic'])
     return original_image_path, image_name, intri, extri, near, far
@@ -329,7 +329,7 @@ def calculate_file_sizes(file_paths):
     return total_size, errors
 
 
-def parse_pairs_file(filename, data_dir):
+def parse_pairs_file(filename, data_dir, n=-1):
     pairs_path_dict = {}
     pairs_label_dict = {}
     
@@ -349,14 +349,17 @@ def parse_pairs_file(filename, data_dir):
 
             if key not in pairs_label_dict:
                 pairs_label_dict[key] = []
+            elif len(pairs_label_dict[key]) >= 2:
+                continue
             pairs_label_dict[key].append(value)
+            
     return pairs_path_dict, pairs_label_dict
 
 
-def process_scene(data_dir, pair_path):
+def process_scene(data_dir, pair_path, n):
     (datadir_dir, datadir_name, datadir_ext) = fio.get_filename_components(data_dir)
     print(cyan("Processing conversion for scene: {}".format(datadir_name)))
-    path_dict, relation_dict = parse_pairs_file(pair_path, data_dir)
+    path_dict, relation_dict = parse_pairs_file(pair_path, data_dir, n)
     return path_dict, relation_dict
 
 
@@ -373,20 +376,77 @@ def rank_and_pair(numbers):
     pairs = [[sorted_numbers[i], sorted_numbers[i+1]] for i in range(len(sorted_numbers)-1)]
     return pairs
 
+def load_yaml(file_path):
+    yaml = YAML()
+    yaml.preserve_quotes = True
+    with open(file_path, 'r') as file:
+        try:
+            data = yaml.load(file)
+            return data
+        except Exception as e:
+            print(f"Error parsing YAML file: {e}")
+            return None
+
+def save_yaml(data, output_file_path):
+    yaml = YAML()
+    yaml.indent(mapping=2, sequence=4, offset=2)
+    yaml.preserve_quotes = True
+    yaml.width = 4096  # Prevent line wrapping
+    
+    with open(output_file_path, 'w') as file:
+        try:
+            yaml.dump(data, file)
+            print(f"YAML file saved successfully to {output_file_path}")
+        except Exception as e:
+            print(f"Error saving YAML file: {e}")
+
+def modify_specific_fields(data, datatag, scenetag, savedirr):
+    tag = fio.sep.join([datatag, scenetag])
+    savedirr = savedirr.replace(fio.getParentDir() + fio.sep, '')
+    savedirr = savedirr.replace(fio.sep + 'test', '')
+
+    # Modify wandb/tags
+    if 'wandb' in data:
+        if 'tags' in data['wandb']:
+            data['wandb']['tags'] = [tag, '256x256']
+        
+        # Modify wandb/name
+        if 'name' in data['wandb']:
+            data['wandb']['name'] = tag
+
+    # Modify dataset/roots
+    if 'dataset' in data and 'roots' in data['dataset']:
+        data['dataset']['roots'] = [savedirr]
+
+    # Modify test/eval_time_skip_steps
+    if 'test' in data and 'eval_time_skip_steps' in data['test']:
+        data['test']['eval_time_skip_steps'] = 1
+
+    return data
+
 
 if __name__ == '__main__':
-    # data_tag = '7s'
-    # scene_tag = 'scene_stairs'
-    data_tag = 'camb'
-    scene_tag = 'scene_KingsCollege'
+    data_tag = '7s'
+    scene_tag = 'scene_stairs'
+    # data_tag = 'camb'
+    # scene_tag = 'scene_KingsCollege'
     this_time = fio.get_current_timestamp("%Y_%m_%d")
+    sample_num_required = 2
 
     scene_data_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_raw', data_tag, scene_tag])
     scene_pair_path = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_pairs', data_tag, scene_tag], 'pairs-query-netvlad10.txt')
-    save_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets__crossvalid_preset', data_tag, scene_tag, 'test'])
+    save_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets', data_tag, 'n' + str(sample_num_required), scene_tag, 'test'])
     if fio.file_exist(save_dir):
         fio.delete_folder(save_dir)
     fio.ensure_dir(save_dir)
+
+    yaml_input_fth = fio.createPath(fio.sep, [fio.getParentDir(), "config", "experiment"], "re10k.yaml")
+    yaml_output_fth = fio.createPath(fio.sep, [fio.getParentDir(), "config", "experiment"], "_".join([data_tag, scene_tag, 'n'+str(sample_num_required)]) + ".yaml")
+    if fio.file_exist(yaml_output_fth):
+        fio.delete_file(yaml_output_fth)
+    yaml_content = load_yaml(yaml_input_fth)
+    new_yaml_content = modify_specific_fields(yaml_content, data_tag, scene_tag, save_dir)
+    save_yaml(yaml_content, yaml_output_fth)
 
     if (fio.file_exist(scene_data_dir) == False) or (fio.file_exist(scene_pair_path) == False):
         print(cyan("[ERROR] No data detected: {}, {}". format(data_tag, scene_tag)))
@@ -405,9 +465,6 @@ if __name__ == '__main__':
     test_intri_dict = get_colmap_intrinsic(test_intri_pth)
     test_extri_pth = fio.createPath(fio.sep,[scene_data_dir, branch, 'sparse', '0'], 'images.txt')
     test_extri_dict = get_colmap_extrinsic(test_extri_pth)
-
-    output_dir = fio.createPath(fio.sep, [fio.getParentDir(), "datasets", data_tag, scene_tag])
-    fio.ensure_dir(output_dir)
 
     chunk_size = 0
     chunk_index = 0
@@ -429,7 +486,7 @@ if __name__ == '__main__':
         chunk_index += 1
         chunk = []
 
-    paths, relation = process_scene(scene_data_dir, scene_pair_path)
+    paths, relation = process_scene(scene_data_dir, scene_pair_path, n=sample_num_required)
     asset_dict = {}
     
     for key, base_labels in relation.items():
@@ -505,3 +562,8 @@ if __name__ == '__main__':
 
     with open(save_path_index, 'w') as f_index:
         json.dump(index, f_index)
+
+    yaml_input_fth = fio.createPath(fio.sep, [fio.getParentDir(), "config", "experiment"], "re10k.yaml")
+    yaml_output_fth = fio.createPath(fio.sep, [fio.getParentDir(), "config", "experiment"], "_".join([data_tag, scene_tag, 'n'+str(sample_num_required)]) + ".yaml")
+
+    yaml_content = load_yaml(yaml_input_fth)
