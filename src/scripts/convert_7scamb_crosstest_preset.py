@@ -349,7 +349,7 @@ def parse_pairs_file(filename, data_dir, n=-1):
 
             if key not in pairs_label_dict:
                 pairs_label_dict[key] = []
-            elif len(pairs_label_dict[key]) >= 2:
+            elif len(pairs_label_dict[key]) >= n:
                 continue
             pairs_label_dict[key].append(value)
             
@@ -425,13 +425,34 @@ def modify_specific_fields(data, datatag, scenetag, savedirr):
     return data
 
 
+def generate_command(experiment, checkpoint, mode, index_path, num_context_views, compute_scores):
+    command = f"""python -m src.main +experiment={experiment} \\
+    checkpointing.load={checkpoint} \\
+    mode={mode} \\
+    dataset/view_sampler=evaluation \\
+    dataset.view_sampler.index_path={index_path} \\
+    dataset.view_sampler.num_context_views={num_context_views} \\
+    test.compute_scores={compute_scores}"""
+    return command
+
+
+def save_command_to_file(command, filename):
+    with open(filename, 'w') as f:
+        f.write("#!/bin/bash\n\n")  # Add shebang line
+        f.write(command)
+    fio.os.chmod(filename, 0o755)  # Make the file executable
+
+
 if __name__ == '__main__':
     data_tag = '7s'
-    scene_tag = 'scene_stairs'
+    # scene_tag = 'scene_stairs'
+    scene_tag = 'scene_fire'
+
     # data_tag = 'camb'
     # scene_tag = 'scene_KingsCollege'
+    
     this_time = fio.get_current_timestamp("%Y_%m_%d")
-    sample_num_required = 2
+    sample_num_required = 5
 
     scene_data_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_raw', data_tag, scene_tag])
     scene_pair_path = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_pairs', data_tag, scene_tag], 'pairs-query-netvlad10.txt')
@@ -563,7 +584,10 @@ if __name__ == '__main__':
     with open(save_path_index, 'w') as f_index:
         json.dump(index, f_index)
 
-    yaml_input_fth = fio.createPath(fio.sep, [fio.getParentDir(), "config", "experiment"], "re10k.yaml")
-    yaml_output_fth = fio.createPath(fio.sep, [fio.getParentDir(), "config", "experiment"], "_".join([data_tag, scene_tag, 'n'+str(sample_num_required)]) + ".yaml")
-
-    yaml_content = load_yaml(yaml_input_fth)
+    (yamldir, yamlname, yamlext) = fio.get_filename_components(yaml_output_fth)
+    input_eval_index_path = fio.createPath(fio.sep, ['datasets', data_tag, 'n' + str(sample_num_required), scene_tag, 'test'], "evaluation.json")
+    num_context_views = sample_num_required
+    compute_score = True
+    command = generate_command(yamlname + '.yaml', "checkpoints/re10k.ckpt", "test", input_eval_index_path, num_context_views, compute_score)
+    save_command_path = fio.createPath(fio.sep, [save_dir], "command.sh")
+    save_command_to_file(command, save_command_path)
