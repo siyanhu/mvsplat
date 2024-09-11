@@ -342,15 +342,16 @@ def parse_pairs_file(filename, data_dir, n=-1):
             
             if (fio.file_exist(key_path) == False) or (fio.file_exist(value_path) == False):
                 continue
+            if key not in pairs_label_dict:
+                pairs_label_dict[key] = []
+            elif len(pairs_label_dict[key]) >= n:
+                continue
+
             if key_path not in pairs_path_dict:
                 pairs_path_dict[key] = key_path
             if value_path not in pairs_path_dict:
                 pairs_path_dict[value] = value_path
 
-            if key not in pairs_label_dict:
-                pairs_label_dict[key] = []
-            elif len(pairs_label_dict[key]) >= n:
-                continue
             pairs_label_dict[key].append(value)
             
     return pairs_path_dict, pairs_label_dict
@@ -452,7 +453,7 @@ if __name__ == '__main__':
     # scene_tag = 'scene_KingsCollege'
     
     this_time = fio.get_current_timestamp("%Y_%m_%d")
-    sample_num_required = 10
+    sample_num_required = 5
 
     scene_data_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_raw', data_tag, scene_tag])
     scene_pair_path = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_pairs', data_tag, scene_tag], 'pairs-query-netvlad10.txt')

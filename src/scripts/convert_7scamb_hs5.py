@@ -87,7 +87,7 @@ def colmap_intrinsics_to_camera_matrix(camera_model, params):
         raise ValueError(f"Unsupported camera model: {camera_model}")
     
 
-def colmap_extrinsics_to_transformation_matrix(qw, qx, qy, qz, tx, ty, tz):
+def colmap_extrinsics_to_transformation_matrix(qw, qx, qy, qz, tx, ty, tz, scale_factor):
     """
     Convert COLMAP extrinsics format to a 4x4 transformation matrix.
     
@@ -103,6 +103,8 @@ def colmap_extrinsics_to_transformation_matrix(qw, qx, qy, qz, tx, ty, tz):
     
     # Create translation vector
     t = np.array([[tx], [ty], [tz]])
+
+    R, t = normalize_extrinsics(R, t, scale_factor)
     
     # Construct 4x4 transformation matrix
     T = np.eye(4)
@@ -116,6 +118,36 @@ def get_colmap_extrinsic(extri_file):
     """
     Taken from https://github.com/colmap/colmap/blob/dev/scripts/python/read_write_model.py
     """
+
+    #     position = np.array([tx, ty, tz])
+    # camera_positions.append(position)
+
+    camera_positions = []
+    with open(extri_file, "r") as fid:
+        while True:
+            line = fid.readline()
+            if not line:
+                break
+            line = line.strip()
+            if len(line) > 0 and line[0] != "#":
+                elems = line.split()
+                image_id = int(elems[0])
+                qvec = np.array(tuple(map(float, elems[1:5])))
+                tvec = np.array(tuple(map(float, elems[5:8])))
+                camera_id = int(elems[8])
+                image_name = elems[9]
+                elems = fid.readline().split()
+                xys = np.column_stack([tuple(map(float, elems[0::3])),
+                                       tuple(map(float, elems[1::3]))])
+                point3D_ids = np.array(tuple(map(int, elems[2::3])))
+                position = np.array([tvec[0], tvec[1], tvec[2]])
+                camera_positions.append(position)
+    
+    camera_positions_np = np.array(camera_positions)
+    distances = np.linalg.norm(camera_positions_np[:, None] - camera_positions_np, axis=2)
+    scale_factor = np.median(distances[distances > 0])
+    print(scale_factor)
+
     images = {}
     with open(extri_file, "r") as fid:
         while True:
@@ -134,6 +166,7 @@ def get_colmap_extrinsic(extri_file):
                 xys = np.column_stack([tuple(map(float, elems[0::3])),
                                        tuple(map(float, elems[1::3]))])
                 point3D_ids = np.array(tuple(map(int, elems[2::3])))
+
                 images[image_name] = {
                     "image_id": image_id,
                     "qvec": qvec,
@@ -145,7 +178,8 @@ def get_colmap_extrinsic(extri_file):
                         qvec[3],
                         tvec[0],
                         tvec[1],
-                        tvec[2]
+                        tvec[2],
+                        scale_factor
                         ),
                     "camera_id": camera_id,
                     "image_name": image_name,
@@ -178,16 +212,47 @@ def get_colmap_intrinsic(intri_file):
                 # assert model == "PINHOLE", "While the loader support other types, the rest of the code assumes PINHOLE"
                 width = int(elems[2])
                 height = int(elems[3])
+
+                # new_width = 256
+                # new_height = 256
+                # scale_x = new_width / width
+                # scale_y = new_height / height
+
+                # f, cx, cy = elems
+                # new_f = f * (scale_x + scale_y) / 2
+                # new_cx = cx * scale_x
+                # new_cy = cy * scale_y
+                # new_params = [new_f, new_cx, new_cy]
+                # params = np.array(tuple(map(float, new_params)))
+        
                 params = np.array(tuple(map(float, elems[4:])))
+                init_intri = colmap_intrinsics_to_camera_matrix(model, params)
+                normalised_intri = normalize_intrinsics(init_intri, width, height)
                 cameras[camera_id] = {
                     "camera_id": camera_id,
                     "model": model,
+                    # "width": 256,
+                    # "height": 256,
                     "width": width,
                     "height": height,
                     "params": params,
-                    "intrinsic": colmap_intrinsics_to_camera_matrix(model, params)
+                    "intrinsic": normalised_intri
                 }
     return cameras
+
+
+def normalize_intrinsics(K, width, height):
+    K_norm = K.copy()
+    K_norm[0, 0] /= width  # fx
+    K_norm[1, 1] /= width  # fy
+    K_norm[0, 2] /= width  # cx
+    K_norm[1, 2] /= height  # cy
+    return K_norm
+
+
+def normalize_extrinsics(R, t, scale_factor):
+    t_norm = t / scale_factor
+    return R, t_norm
 
 
 def get_colmap_points3d(pnt3d_file):
@@ -452,7 +517,7 @@ if __name__ == '__main__':
     # scene_tag = 'scene_KingsCollege'
     
     this_time = fio.get_current_timestamp("%Y_%m_%d")
-    sample_num_required = 10
+    sample_num_required = 5
 
     scene_data_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_raw', data_tag, scene_tag])
     scene_pair_path = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_pairs', data_tag, scene_tag], 'pairs-query-netvlad10.txt')
@@ -538,9 +603,11 @@ if __name__ == '__main__':
             base_vids.append(vid)
             images_dict[vid] = load_raw(base_img_path)
             vid_dict[vid] = vid_name
+
             intrinsics[vid] = intrins
             world2cams[vid] = extrins
             cam2worlds[vid] = np.linalg.inv(extrins)
+
             near_fars[vid] = [near, far]
             num_bytes += get_size(base_img_path)
 
