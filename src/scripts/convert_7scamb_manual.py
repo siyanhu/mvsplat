@@ -115,7 +115,7 @@ def colmap_extrinsics_to_transformation_matrix(qw, qx, qy, qz, tx, ty, tz, scale
     return T
 
 
-def get_colmap_extrinsic(extri_file):
+def  get_colmap_extrinsic(extri_file):
     """
     Taken from https://github.com/colmap/colmap/blob/dev/scripts/python/read_write_model.py
     """
@@ -131,7 +131,7 @@ def get_colmap_extrinsic(extri_file):
                 image_id = int(elems[0])
                 qvec = np.array(tuple(map(float, elems[1:5])))
                 tvec = np.array(tuple(map(float, elems[5:8])))
-                camera_id = int(elems[8])
+                camera_id = int(elems[8]) 
                 image_name = elems[9]
                 elems = fid.readline().split()
                 xys = np.column_stack([tuple(map(float, elems[0::3])),
@@ -175,7 +175,7 @@ def get_colmap_extrinsic(extri_file):
                         tvec[0],
                         tvec[1],
                         tvec[2],
-                        scale_factor=scale_factor
+                        # scale_factor=scale_factor
                         ),
                     "camera_id": camera_id,
                     "image_name": image_name,
@@ -580,7 +580,42 @@ if __name__ == '__main__':
         chunk_index += 1
         chunk = []
 
-    paths, relation = process_scene(scene_data_dir, scene_pair_path, n=sample_num_required)
+    # paths, relation = process_scene(scene_data_dir, scene_pair_path, n=sample_num_required)
+
+    target_label =  "seq-03/frame-000380.color.png"
+    # base0_label = "seq-01/frame-000000.color.png"
+    # base1_label = "seq-01/frame-000061.color.png"
+    # base2_label = "seq-01/frame-000091.color.png"
+    # base3_label = "seq-01/frame-000117.color.png"
+    # base4_label = "seq-01/frame-000182.color.png"
+    # base5_label = "seq-01/frame-000207.color.png"
+    # base6_label = "seq-01/frame-000231.color.png"
+    base0_label = "seq-01/frame-000214.color.png"
+    base1_label = "seq-01/frame-000233.color.png"
+    base2_label = "seq-01/frame-000259.color.png"
+    base3_label = "seq-01/frame-000279.color.png"
+    base4_label = "seq-01/frame-000301.color.png"
+
+    relation = {}
+    relation[target_label] = [
+        base0_label,
+        base1_label,
+        base2_label,
+        base3_label,
+        base4_label,
+        # base5_label,
+        # base6_label
+    ]
+    paths = {}
+    paths[target_label] = fio.createPath(fio.sep, [scene_data_dir, 'test_full_byorder_59', 'images'], target_label)
+    paths[base0_label] = fio.createPath(fio.sep, [scene_data_dir, 'train_full_byorder_85', 'images'], base0_label)
+    paths[base1_label] = fio.createPath(fio.sep, [scene_data_dir, 'train_full_byorder_85', 'images'], base1_label)
+    paths[base2_label] = fio.createPath(fio.sep, [scene_data_dir, 'train_full_byorder_85', 'images'], base2_label)
+    paths[base3_label] = fio.createPath(fio.sep, [scene_data_dir, 'train_full_byorder_85', 'images'], base3_label)
+    paths[base4_label] = fio.createPath(fio.sep, [scene_data_dir, 'train_full_byorder_85', 'images'], base4_label)
+    # paths[base5_label] = fio.createPath(fio.sep, [scene_data_dir, 'train_full_byorder_85', 'images'], base5_label)
+    # paths[base6_label] = fio.createPath(fio.sep, [scene_data_dir, 'train_full_byorder_85', 'images'], base6_label)
+
     asset_dict = {}
     
     for key, base_labels in relation.items():
