@@ -5,6 +5,7 @@ from typing import Optional, Protocol, runtime_checkable
 import moviepy.editor as mpy
 import torch
 import wandb
+from PIL import Image
 from einops import pack, rearrange, repeat
 from jaxtyping import Float
 from pytorch_lightning import LightningModule
@@ -232,15 +233,35 @@ class ModelWrapper(LightningModule):
             if f"lpips" not in self.test_step_outputs:
                 self.test_step_outputs[f"lpips"] = []
 
+            resized_rgb_gt = self.crop_center(rgb_gt)
+
             self.test_step_outputs[f"psnr"].append(
-                compute_psnr(rgb_gt, rgb).mean().item()
+                compute_psnr(resized_rgb_gt, rgb).mean().item()
             )
             self.test_step_outputs[f"ssim"].append(
-                compute_ssim(rgb_gt, rgb).mean().item()
+                compute_ssim(resized_rgb_gt, rgb).mean().item()
             )
             self.test_step_outputs[f"lpips"].append(
-                compute_lpips(rgb_gt, rgb).mean().item()
+                compute_lpips(resized_rgb_gt, rgb).mean().item()
             )
+
+    def crop_center(img, size=256):
+        # Open the image
+        width, height = img.size
+        
+        # Calculate the coordinates for cropping
+        left = (width - size) / 2
+        top = (height - size) / 2
+        right = (width + size) / 2
+        bottom = (height + size) / 2
+        
+        # Crop the image
+        cropped_img = img.crop((left, top, right, bottom))
+        
+        # Resize the image to ensure it's exactly 256x256
+        cropped_img = cropped_img.resize((size, size), Image.LANCZOS)
+        return cropped_img
+
 
     def on_test_end(self) -> None:
         name = get_cfg()["wandb"]["name"]
@@ -317,6 +338,7 @@ class ModelWrapper(LightningModule):
         for tag, rgb in zip(
             ("val",), (rgb_softmax,)
         ):
+            
             psnr = compute_psnr(rgb_gt, rgb).mean()
             self.log(f"val/psnr_{tag}", psnr)
             lpips = compute_lpips(rgb_gt, rgb).mean()

@@ -210,18 +210,18 @@ def get_colmap_intrinsic(intri_file):
                 height = int(elems[3])
                 params = np.array(tuple(map(float, elems[4:])))
 
-                # new_width = 256
-                # new_height = 256
-                # scale_x = new_width / width
-                # scale_y = new_height / height
+                new_width = 640
+                new_height = 360
+                scale_x = new_width / width
+                scale_y = new_height / height
 
-                # f, cx, cy = params
-                # new_f = f * (scale_x + scale_y) / 2
-                # new_cx = cx * scale_x
-                # new_cy = cy * scale_y
-                # new_params = [new_f, new_cx, new_cy]
-                # params = np.array(tuple(map(float, new_params)))
-                params = np.array(tuple(map(float, elems[4:])))
+                f, cx, cy = params
+                new_f = f * (scale_x + scale_y) / 2
+                new_cx = cx * scale_x
+                new_cy = cy * scale_y
+                new_params = [new_f, new_cx, new_cy]
+                params = np.array(tuple(map(float, new_params)))
+                # params = np.array(tuple(map(float, elems[4:])))
 
                 init_intri = colmap_intrinsics_to_camera_matrix(model, params)
                 normalised_intri = normalize_intrinsics(init_intri, width, height)
@@ -368,7 +368,7 @@ def get_size(path) -> int:
 
 def load_raw_resize(path, save_path) -> UInt8[Tensor, " length"]:
     image = Image.open(path)
-    resized_image = image.resize((256, 256))
+    resized_image = image.resize((640, 360))
     byte_arr = io.BytesIO()
     resized_image.save(byte_arr, format='PNG')
     resized_image.save(save_path)
@@ -595,20 +595,20 @@ if __name__ == '__main__':
         key_img_path = paths[key]
         update_img_pth, vid_name, intrins, extrins, near, far = get_params(key_img_path, test_intri_dict, test_extri_dict)
         
-        images_dict[vid] = load_raw(key_img_path)
-        # resize_save_path = fio.createPath(fio.sep, [resize_save_dir], 'resize_' + key)
-        # (duedir, duename, dueext) = fio.get_filename_components(resize_save_path)
-        # fio.ensure_dir(duedir)
-        # resized_size_key, tensor_key = load_raw_resize(key_img_path, resize_save_path)
-        # images_dict[vid] = tensor_key
+        # images_dict[vid] = load_raw(key_img_path)
+        resize_save_path = fio.createPath(fio.sep, [resize_save_dir], 'resize_' + key)
+        (duedir, duename, dueext) = fio.get_filename_components(resize_save_path)
+        fio.ensure_dir(duedir)
+        resized_size_key, tensor_key = load_raw_resize(key_img_path, resize_save_path)
+        images_dict[vid] = tensor_key
 
         vid_dict[vid] = vid_name
         intrinsics[vid] = intrins
         world2cams[vid] = extrins
         cam2worlds[vid] = np.linalg.inv(extrins)
         near_fars[vid] = [near, far]
-        num_bytes += get_size(key_img_path)
-        # num_bytes += resized_size_key
+        # num_bytes += get_size(key_img_path)
+        num_bytes += resized_size_key
         
         for blabel in base_labels:
             vid += 1
@@ -617,12 +617,12 @@ if __name__ == '__main__':
         
             base_vids.append(vid)
             
-            images_dict[vid] = load_raw(base_img_path)
-            # resize_save_path = fio.createPath(fio.sep, [resize_save_dir], 'resize_' + blabel)
-            # (duedir, duename, dueext) = fio.get_filename_components(resize_save_path)
-            # fio.ensure_dir(duedir)
-            # resized_size_base, tensor_base = load_raw_resize(key_img_path, resize_save_path)
-            # images_dict[vid] = tensor_base
+            # images_dict[vid] = load_raw(base_img_path)
+            resize_save_path = fio.createPath(fio.sep, [resize_save_dir], 'resize_' + blabel)
+            (duedir, duename, dueext) = fio.get_filename_components(resize_save_path)
+            fio.ensure_dir(duedir)
+            resized_size_base, tensor_base = load_raw_resize(key_img_path, resize_save_path)
+            images_dict[vid] = tensor_base
 
             vid_dict[vid] = vid_name
 
@@ -631,8 +631,8 @@ if __name__ == '__main__':
             cam2worlds[vid] = np.linalg.inv(extrins)
 
             near_fars[vid] = [near, far]
-            num_bytes += get_size(base_img_path)
-            # num_bytes += resized_size_base
+            # num_bytes += get_size(base_img_path)
+            num_bytes += resized_size_base
 
         asset_dict[key] = {
             "context": base_vids,

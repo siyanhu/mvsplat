@@ -142,13 +142,7 @@ class DatasetRE10k(IterableDataset):
                 if (get_fov(intrinsics).rad2deg() > self.cfg.max_fov).any():
                     continue
                 
-                # context_images = []
-                # for index in context_indices:
-                #     test_item = index.item()
-                #     if test_item > len(example["images"]) - 1:
-                #         test_item = len(example["images"]) - 1
-                #     img = example["images"][test_item]
-                #     context_images.append(img)
+                # Load the images.
                 context_images = [
                     example["images"][index.item()] for index in context_indices
                 ]
@@ -156,25 +150,22 @@ class DatasetRE10k(IterableDataset):
                 target_images = [
                     example["images"][index.item()] for index in target_indices
                 ]
-                # target_images = []
-                # for index in target_indices:
-                #     test_item = index.item()
-                #     if test_item > len(example["images"]) - 1:
-                #         test_item = len(example["images"]) - 1
-                #     img = example["images"][test_item]
-                #     target_images.append(img)
                 target_images = self.convert_images(target_images)
 
                 # Skip the example if the images don't have the right shape.
-                # context_image_invalid = context_images.shape[1:] != (3, 360, 640)
-                # target_image_invalid = target_images.shape[1:] != (3, 360, 640)
-                # if self.cfg.skip_bad_shape and (context_image_invalid or target_image_invalid):
-                #     print(
-                #         f"Skipped bad example {example['key']}. Context shape was "
-                #         f"{context_images.shape} and target shape was "
-                #         f"{target_images.shape}."
-                #     )
-                #     continue
+                context_image_invalid = context_images.shape[1:] != (3, 360, 640)
+                target_image_invalid = target_images.shape[1:] != (3, 360, 640)
+
+                # Skip the example if the images don't have the right shape.
+                context_image_invalid = context_images.shape[1:] != (3, 360, 640)
+                target_image_invalid = target_images.shape[1:] != (3, 360, 640)
+                if self.cfg.skip_bad_shape and (context_image_invalid or target_image_invalid):
+                    print(
+                        f"Skipped bad example {example['key']}. Context shape was "
+                        f"{context_images.shape} and target shape was "
+                        f"{target_images.shape}."
+                    )
+                    continue
 
                 # Resize the world to make the baseline 1.
                 context_extrinsics = extrinsics[context_indices]
